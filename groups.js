@@ -1,0 +1,21 @@
+// 风控组以同一笔交易的违规结果作为布尔输入。
+const groupDemo = (() => {
+ let nextId=4;
+ const rules={A:true,B:false,C:true,D:false};
+ const leaf=rule=>({kind:'rule',rule});
+ const root={kind:'group',id:1,name:'总风控组',op:'or',children:[{kind:'group',id:2,name:'AB组',op:'and',children:[leaf('A'),leaf('B')]},{kind:'group',id:3,name:'CD组',op:'or',children:[leaf('C'),leaf('D')]}]};
+ const doc=document;
+ const get=id=>doc.getElementById(id);
+ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function evaluate(node){if(node.kind==='rule')return rules[node.rule];if(!node.children.length)return false;return node.op==='and'?node.children.every(evaluate):node.children.some(evaluate)}
+ function expression(node){return node.kind==='rule'?node.rule:'('+node.children.map(expression).join(node.op==='and'?' ∩ ':' ∪ ')+')'}
+ function find(id,node=root){if(node.id===id)return node;for(const child of node.children||[]){const found=find(id,child);if(found)return found}}
+ function controls(node,isRoot=false){if(node.kind==='rule')return `<div class="group-leaf"><span>规则</span><select data-rule>${Object.keys(rules).map(r=>`<option ${r===node.rule?'selected':''}>${r}</option>`).join('')}</select><span class="${evaluate(node)?'over':'ok'}">${evaluate(node)?'违规':'未违规'}</span><button type="button" data-remove>移除</button></div>`;
+ return `<section class="group-node" data-id="${node.id}"><div class="group-header"><input aria-label="组名称" data-name value="${escape(node.name)}"><select aria-label="组内组合关系" data-op><option value="and" ${node.op==='and'?'selected':''}>交集 AND · 全部违规</option><option value="or" ${node.op==='or'?'selected':''}>并集 OR · 任一违规</option></select>${isRoot?'':'<button type="button" data-remove>移除组</button>'}</div><div class="group-children">${node.children.map((child,i)=>`<div data-index="${i}">${controls(child)}</div>`).join('')}</div><div class="group-tools"><button type="button" data-add-rule>＋添加规则</button><button type="button" data-add-group>＋添加子组</button></div></section>`}
+ function paintResults(){get('groupExpression').textContent=expression(root);const hit=evaluate(root);get('groupVerdict').textContent=hit?'根组命中 → '+get('groupAction').value:'根组未命中 → 不执行组动作';get('groupVerdict').className='explain '+(hit?'over':'ok');const lines=[];function walk(n){if(n.kind==='group'){lines.push(`<li>${escape(n.name)}：${escape(expression(n))} → <strong class="${evaluate(n)?'over':'ok'}">${evaluate(n)?'命中':'未命中'}</strong></li>`);n.children.forEach(walk)}}walk(root);get('groupTrace').innerHTML='<ul>'+lines.join('')+'</ul>'}
+ function render(){get('ruleOutcomes').innerHTML=Object.keys(rules).map(r=>`<label><input type="checkbox" data-outcome="${r}" ${rules[r]?'checked':''}> 规则 ${r} 违规</label>`).join('');get('groupTree').innerHTML=controls(root,true);paintResults()}
+ get('ruleOutcomes').addEventListener('change',e=>{if(e.target.dataset.outcome){rules[e.target.dataset.outcome]=e.target.checked;render()}});
+ get('groupTree').addEventListener('change',e=>{const element=e.target,groupElement=element.closest('[data-id]'),node=find(Number(groupElement.dataset.id));if(element.hasAttribute('data-op'))node.op=element.value;if(element.hasAttribute('data-name'))node.name=element.value;if(element.hasAttribute('data-rule')){const wrapper=element.closest('[data-index]');node.children[Number(wrapper.dataset.index)].rule=element.value}render()});
+ get('groupTree').addEventListener('click',e=>{const button=e.target.closest('button');if(!button)return;const groupElement=button.closest('[data-id]'),node=find(Number(groupElement.dataset.id));if(button.hasAttribute('data-add-rule'))node.children.push(leaf('A'));if(button.hasAttribute('data-add-group'))node.children.push({kind:'group',id:nextId++,name:'新风控组',op:'and',children:[leaf('A'),leaf('B')]});if(button.hasAttribute('data-remove')){const wrapper=button.closest('[data-index]'),parent=wrapper.parentElement.closest('[data-id]'),parentNode=find(Number(parent.dataset.id));if(parentNode.children.length<=2){get('groupVerdict').textContent='每个风控组至少保留两个子项。';return}parentNode.children.splice(Number(wrapper.dataset.index),1)}render()});
+ get('groupAction').addEventListener('change',paintResults);render();return {evaluate,expression,root,rules};
+})();
